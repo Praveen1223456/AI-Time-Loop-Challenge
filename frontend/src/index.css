@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+:root { color-scheme: dark; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at top, #14213d 0%, #0b1020 55%, #070a14 100%) fixed;
+  color: #e5e9f5;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 2px; }
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

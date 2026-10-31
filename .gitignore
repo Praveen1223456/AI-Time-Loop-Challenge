@@ -141,9 +141,14 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+.vite-temp/
 
 # Astro generated types
 .astro/
 
 # Turbo Repo
 .turbo
+
+# OS metadata
+.DS_Store
+Thumbs.db

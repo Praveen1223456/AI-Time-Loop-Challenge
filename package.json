@@ -1,0 +1,13 @@
+{
+  "name": "ai-time-loop-challenge",
+  "private": true,
+  "description": "Convenience scripts. backend/ and frontend/ are independent applications.",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "seed": "npm --prefix backend run seed",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "build": "npm --prefix frontend run build"
+  }
+}
