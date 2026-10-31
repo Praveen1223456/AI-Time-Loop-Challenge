@@ -198,7 +198,16 @@ export function validateBlueprint(raw) {
   if (!endingIds.has(bp.loopLimitEndingId)) issues.push(`loopLimitEndingId "${bp.loopLimitEndingId}" does not exist`);
   else if (endingOf(bp.loopLimitEndingId).type !== 'failure') issues.push('loopLimitEndingId must be a failure ending');
   if (!endingIds.has(bp.solutionGuide.intendedEndingId)) issues.push('solutionGuide.intendedEndingId does not exist');
-  for (const id of bp.solutionGuide.requiredClueIds) if (!clueIds.has(id)) issues.push(`solutionGuide references unknown clue "${id}"`);
+  for (const id of bp.solutionGuide.requiredClueIds) {
+    if (!clueIds.has(id)) {
+      issues.push(`solutionGuide references unknown clue "${id}"`);
+    } else {
+      const c = bp.clues.find((x) => x.id === id);
+      if (c && c.persistence !== 'persistent') {
+        issues.push(`solutionGuide required clue "${id}" must have persistence "persistent" to support multi-loop deduction`);
+      }
+    }
+  }
 
   issues.push(...checkRelaxedReachability(bp));
 

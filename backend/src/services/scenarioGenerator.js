@@ -29,43 +29,36 @@ export function parseModelJson(text) {
   if (fenceMatch) {
     stripped = fenceMatch[1].trim();
   } else {
-    stripped = stripped.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    // If no clean code fence, try extracting from the first '{' to the last '}'
+    const firstBrace = stripped.indexOf('{');
+    const lastBrace = stripped.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      stripped = stripped.slice(firstBrace, lastBrace + 1).trim();
+    }
   }
-  const firstBrace = stripped.indexOf('{');
-  const lastBrace = stripped.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    stripped = stripped.slice(firstBrace, lastBrace + 1);
-  }
+  let parsed;
   try {
-    const val = JSON.parse(stripped);
-    if (val !== null && typeof val === 'object' && !Array.isArray(val)) return val;
-  } catch {
-    // Attempt repairs: strip single-line comments and trailing commas before } or ]
-    try {
-      const repaired = stripped
-        .replace(/\/\/[^\r\n]*$/gm, '')
-        .replace(/,(\s*[}\]])/g, '$1');
-      const val = JSON.parse(repaired);
-      if (val !== null && typeof val === 'object' && !Array.isArray(val)) return val;
-    } catch {}
+    parsed = JSON.parse(stripped);
+  } catch (err) {
+    throw new Error('response is not valid JSON');
   }
-  let value;
-  try { value = JSON.parse(stripped); } catch { throw new Error('response is not valid JSON'); }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('response must be a JSON object');
-  return value;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('response must be a JSON object');
+  }
+  return parsed;
 }
 
 export function normalizeClock(value) {
   if (typeof value !== 'string') return value;
   const str = value.trim();
   if (str === '24:00' || str === '24:0') return '00:00';
-  const match = str.match(/^(\d{1,2}):(\d{2})$/);
-  if (match) {
-    let h = Number(match[1]);
-    const m = Number(match[2]);
-    if (h === 24) h = 0;
-    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const m = str.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) {
+    const hours = parseInt(m[1], 10);
+    const mins = parseInt(m[2], 10);
+    if (hours === 24 && mins === 0) return '00:00';
+    if (hours >= 0 && hours < 24 && mins >= 0 && mins < 60) {
+      return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
     }
   }
   return str;
@@ -115,7 +108,7 @@ export function repairTimeline(raw, loopMinutes) {
       if (typeof e.at === 'string' && parseClock(e.at) !== null) {
         const offset = minutesBetween(raw.initialTime, e.at);
         // Case: event scheduled exactly at initialTime (offset 0)
-        // Catastrophic disaster events (which fail the loop or conclude it) belong at loopEndTime
+        // Catastrophic disaster events (which mark time expiration) belong at loopEndTime
         if (offset === 0 && raw.loopEndTime) {
           e.at = raw.loopEndTime;
         }
@@ -175,26 +168,25 @@ const MINIMAL_EXAMPLE = Object.freeze({
     { id: 'go_belfry_to_square', type: 'travel', label: 'Climb down to square', locationId: 'belfry', destinationId: 'square', timeCost: 2, prerequisites: [], effects: [], narrative: 'You climb down.' },
     { id: 'search_blueprints', type: 'inspect', label: 'Search archives for blueprints', locationId: 'library', timeCost: 11, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_blueprints' }], narrative: 'You find the schematics after a long search.' },
     { id: 'find_clue_two', type: 'inspect', label: 'Read book', locationId: 'library', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_two' }], narrative: 'You find clue 2.' },
-    { id: 'find_clue_three', type: 'talk', label: 'Talk to librarian', locationId: 'library', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_three' }], narrative: 'You learn clue 3.' },
-    { id: 'find_clue_four', type: 'talk', label: 'Talk to mayor', locationId: 'square', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_four' }], narrative: 'You learn clue 4.' },
+    { id: 'find_clue_three', type: 'talk', label: 'Talk to librarian', locationId: 'library', targetId: 'librarian', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_three' }], narrative: 'You learn clue 3.' },
+    { id: 'find_clue_four', type: 'talk', label: 'Talk to mayor', locationId: 'square', targetId: 'mayor', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_four' }], narrative: 'You learn clue 4.' },
     { id: 'find_clue_five', type: 'inspect', label: 'Inspect statue', locationId: 'square', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_five' }], narrative: 'You learn clue 5.' },
-    { id: 'find_clue_six', type: 'talk', label: 'Talk to clockmaker', locationId: 'belfry', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_six' }], narrative: 'You learn clue 6.' },
+    { id: 'find_clue_six', type: 'talk', label: 'Talk to clockmaker', locationId: 'belfry', targetId: 'clockmaker', timeCost: 1, prerequisites: [], effects: [{ type: 'discover_clue', clueId: 'clue_six' }], narrative: 'You learn clue 6.' },
     { id: 'disarm_clock', type: 'interact', label: 'Disarm the clock mechanism', locationId: 'belfry', timeCost: 2, prerequisites: ['clue:clue_blueprints'], effects: [{ type: 'set_flag', flag: 'clock_stopped' }], narrative: 'Using the blueprints, you safely disarm the clock.' },
     { id: 'wait_minute', type: 'wait', label: 'Wait a minute', locationId: '*', timeCost: 1, prerequisites: [], effects: [], narrative: 'You wait a minute.' },
   ],
   events: [
-    { id: 'explosion', at: '12:00', description: 'The tower explodes.', conditions: ['!flag:clock_stopped'], effects: [{ type: 'set_flag', flag: 'exploded' }] },
+    { id: 'explosion', at: '12:00', description: 'The clock strikes noon. The mechanism locks as time runs out.', conditions: ['!flag:clock_stopped'], effects: [{ type: 'set_flag', flag: 'exploded' }] },
   ],
   winConditions: [{ id: 'win_saved', endingId: 'ending_saved', conditions: ['flag:clock_stopped'] }],
-  failureConditions: [{ id: 'fail_exploded', endingId: 'ending_exploded', conditions: ['flag:exploded'] }],
+  failureConditions: [],
   loopLimitEndingId: 'ending_time_up',
   endings: [
     { id: 'ending_saved', type: 'victory', title: 'Saved the Town', narrative: 'You saved the town in time!' },
-    { id: 'ending_exploded', type: 'failure', title: 'Tower Exploded', narrative: 'The tower exploded.' },
-    { id: 'ending_time_up', type: 'failure', title: 'Time Ran Out', narrative: 'You were trapped in the loop.' },
+    { id: 'ending_time_up', type: 'failure', title: 'Time Ran Out', narrative: 'The loop closes around you and you are trapped in time.' },
   ],
   solutionGuide: {
-    causalChain: ['Find blueprints in library taking 11 mins', 'Loop resets', 'Rush to belfry in loop 2 and disarm clock'],
+    causalChain: ['Find blueprints in library taking 11 mins', 'Loop resets with blueprints remembered', 'Rush to belfry in loop 2 and disarm clock'],
     requiredClueIds: ['clue_blueprints'],
     intendedEndingId: 'ending_saved',
   },
@@ -211,24 +203,27 @@ GAME MODEL
 - Time is in minutes (HH:MM, 24h format "00:00" to "23:59"). The loop runs from initialTime to loopEndTime.
 - loopEndTime must be strictly later than initialTime by exactly loopLength minutes.
 - Cross-midnight timelines are fully supported: e.g. initialTime "23:45" with loopLength 15 has loopEndTime "00:00". Never use "24:00" (use "00:00").
-- Every event "at" time MUST be strictly after initialTime and no later than loopEndTime. Climactic or deadline disaster events (e.g. train crash, bomb explosion, station breach) occur at loopEndTime. Each action has a timeCost (>=1 minute).
+- Every event "at" time MUST be strictly after initialTime and no later than loopEndTime. Climactic or deadline events occur at loopEndTime. Each action has a timeCost (>=1 minute).
 - Ids are lowercase snake_case, 2-64 chars, unique within their list. Every id you reference must exist.
 - Action types: inspect, talk, travel, use_item, interact, wait. Travel actions need destinationId. Only wait actions may use locationId "*". IMPORTANT: any action of type "use_item" MUST include an "item:<itemId>" string in its prerequisites. If no item is used, use type "interact" or "inspect" instead of "use_item".
+- Every action of type "talk" MUST include targetId matching a character id in "characters".
 - Effects (the ONLY allowed ones): discover_clue{clueId}, add_item{itemId}, remove_item{itemId}, set_flag{flag}, set_object_state{objectId,state}, move_character{characterId,locationId}, unlock_action{actionId}, unlock_location{locationId}, confirm_fact{factId}.
 - Prerequisite/condition strings (optionally prefixed with "!" for NOT): clue:<id>, item:<id>, flag:<name>, fact:<id>, loc:<id>, char:<characterId>@<locationId>, object:<objectId>=<state>, time_before:HH:MM, time_at_or_after:HH:MM. No other forms.
 - Any flag used in a prerequisite must be set by some effect. Anything lockedByDefault (actions/locations) must be unlocked by an unlock_action / unlock_location effect, and only lockedByDefault targets may be unlocked.
 - Events fire once per loop when the clock passes "at", in time order then list order; their "conditions" use the same prerequisite strings.
-- winConditions/failureConditions use prerequisite strings and point at endings of type victory/failure respectively. loopLimitEndingId must be a failure ending.
+- winConditions point at endings of type victory. loopLimitEndingId must be a failure ending.
+- CRITICAL: Never put the loop-end event or disaster in failureConditions! The loop-end event merely causes time expiration so the player can reset into the next loop. failureConditions are only for critical player missteps during active play (or leave failureConditions empty []).
 
 QUALITY RULES
 - One clear central event. 3-5 locations (at least 3), 3-6 characters (MUST have at least 3 characters), 6-12 clues (MUST have at least 6 clues), a coherent causal chain.
+- Every clue MUST have persistence: "persistent".
+- Every character in "characters" must have at least one action referencing them (e.g. action type "talk" with targetId).
 - The player MUST NOT be able to win in loop 1:
-  1. The winning victory action (or win condition) MUST require a persistent clue (e.g. prerequisites: ["clue:clue_secret_code"] with persistence: "persistent").
+  1. The winning victory action (or win condition) MUST require a persistent clue (e.g. prerequisites: ["clue:clue_secret_code"]).
   2. The action that discovers that persistent clue must take enough time (timeCost: 10-12 minutes, e.g. searching extensive archives or deciphering notes) so that in loop 1, discovering the clue AND traveling to the victory location and executing the victory action will EXCEED loopLength (15 minutes). Therefore, loop 1 CANNOT be won.
   3. In loop 2, because that clue has persistence: "persistent", the player already remembers it from the start of loop 2. The player skips the discovery action, travels directly to the victory location, and executes the victory action (timeCost: 2-3 min), winning within 5-8 minutes total.
 - Ensure every location is reachable via two-way travel actions from startLocationId.
 - Every clue defined in "clues" MUST be discoverable by an action effect: { "type": "discover_clue", "clueId": "<id>" }.
-- Every flag used in prerequisites must be set by an effect: { "type": "set_flag", "flag": "<name>" }.
 - Keep lockedByDefault: false on all locations and actions so all places and clues are reachable.
 - Keep the scenario compact (roughly 12-25 actions).
 - STRICT LENGTH LIMIT: Every action narrative MUST be under 150 characters (1-2 concise sentences).
@@ -289,14 +284,15 @@ function buildUserPrompt({ idea, theme, difficulty, loopMinutes, maxLoops, feedb
     `- theme: "${theme}"`,
     `- difficulty: "${difficulty}"`,
     `- loopLength: ${loopMinutes} (so loopEndTime must be exactly ${loopMinutes} minutes after initialTime; if crossing midnight, e.g. 23:45 + 15 min, loopEndTime is 00:00)`,
-    `- Event timing rule: Every event's "at" time must be strictly after initialTime and no later than loopEndTime (catastrophic deadline events occur at loopEndTime).`,
+    `- Event timing rule: Every event's "at" time must be strictly after initialTime and no later than loopEndTime.`,
     `- maxLoops: ${maxLoops}`,
     `- locations: between 3 and 5 locations (at least 3)`,
-    `- characters: between 3 and 5 characters (at least 3)`,
-    `- clues: provide exactly 6 clues. IMPORTANT: In the "actions" array, you MUST provide 6 actions, one for each clue, each with effect: { "type": "discover_clue", "clueId": "<id>" } so all 6 clues are discoverable.`,
+    `- characters: between 3 and 5 characters (at least 3). Every character must be involved in an action (such as a talk action with targetId set to their id).`,
+    `- clues: provide exactly 6 clues. Every clue MUST have persistence: "persistent". In the "actions" array, you MUST provide 6 actions, one for each clue, each with effect: { "type": "discover_clue", "clueId": "<id>" } so all 6 clues are discoverable.`,
     '- flags: If any condition checks "flag:<name>" (such as in winConditions), the winning action MUST include effect: { "type": "set_flag", "flag": "<name>" }.',
     '- Keep lockedByDefault: false on all locations and actions so all places and clues are reachable.',
     `- Solvability rule (CRITICAL): The winning action MUST require a persistent clue (e.g. prerequisites: ["clue:clue_secret_code"]). The action discovering that persistent clue MUST have timeCost: ${investigationTime} min so discovering it + traveling to the victory action exceeds ${loopMinutes} min in loop 1. In loop 2, the player starts with the clue already known, travels straight to the victory action (timeCost: 2-3 min), and wins within 5-8 min.`,
+    '- Failure rule: Do NOT put the loop-end event in failureConditions! The loop-end event marks time expiration (reset). Leave failureConditions empty [].',
     '- Action type rule: Never use type "use_item" unless an item exists in "items" and "item:<id>" is in prerequisites. For levers, valves, panels, or buttons, use type "interact".',
     '- Keep the scenario compact: 3-4 locations, 3 characters, 6 clues, and 12-16 total actions.',
     '- Keep each action narrative strictly 1 short sentence under 150 characters.',
@@ -322,6 +318,7 @@ const slugFor = (title) =>
 export function createScenarioGenerator({
   ai, scenarios, maxRetries = 2, timeoutMs = 45000, retryDelayMs = 400,
   solveMaxNodes = 20000, logger = console, onAttemptRejected, sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  fallbackBlueprint = null,
 }) {
   const inFlight = new Set();
   const jsonSchema = blueprintGeminiSchema();
@@ -342,6 +339,7 @@ export function createScenarioGenerator({
     raw.maxLoops = params.maxLoops;
     raw.reset = { allowManualReset: true };
     repairTimeline(raw, params.loopMinutes);
+
     // Defensively clamp narrative and description strings to schema limits if slightly over
     if (typeof raw.premise === 'string' && raw.premise.length > 1000) raw.premise = raw.premise.slice(0, 1000);
     if (typeof raw.objective === 'string' && raw.objective.length > 300) raw.objective = raw.objective.slice(0, 300);
@@ -352,7 +350,21 @@ export function createScenarioGenerator({
     }
     if (Array.isArray(raw.clues)) {
       for (const c of raw.clues) {
-        if (typeof c?.description === 'string' && c.description.length > 500) c.description = c.description.slice(0, 500);
+        if (c && typeof c === 'object') {
+          c.persistence = 'persistent'; // All clues in time-loop deduction survive resets
+          if (typeof c.description === 'string' && c.description.length > 500) c.description = c.description.slice(0, 500);
+        }
+      }
+    }
+    if (Array.isArray(raw.characters) && raw.characters.length > 0 && Array.isArray(raw.actions)) {
+      const charIds = new Set(raw.characters.map((c) => c.id));
+      for (const a of raw.actions) {
+        if (a && typeof a === 'object' && a.type === 'talk') {
+          if (!a.targetId || !charIds.has(a.targetId)) {
+            const locChar = raw.characters.find((c) => c.initialLocationId === a.locationId);
+            a.targetId = locChar?.id ?? raw.characters[0].id;
+          }
+        }
       }
     }
     if (Array.isArray(raw.actions)) {
@@ -400,7 +412,24 @@ export function createScenarioGenerator({
         }
       }
     }
-    if (Array.isArray(raw.failureConditions)) {
+    // Remove failureConditions that are triggered solely by an event at loopEndTime
+    if (Array.isArray(raw.failureConditions) && Array.isArray(raw.events)) {
+      const endFlags = new Set();
+      for (const ev of raw.events) {
+        if (ev && ev.at === raw.loopEndTime && Array.isArray(ev.effects)) {
+          for (const ef of ev.effects) {
+            if (ef.type === 'set_flag' && ef.flag) endFlags.add(ef.flag);
+          }
+        }
+      }
+      raw.failureConditions = raw.failureConditions.filter((fc) => {
+        if (!Array.isArray(fc?.conditions)) return true;
+        const usesEndFlag = fc.conditions.some((c) => {
+          const p = typeof c === 'string' ? c.replace(/^!/, '') : '';
+          return p.startsWith('flag:') && endFlags.has(p.slice(5));
+        });
+        return !usesEndFlag;
+      });
       for (const f of raw.failureConditions) {
         if (f && typeof f === 'object' && Array.isArray(f.conditions)) {
           f.conditions = f.conditions.map(normalizePrerequisite);
@@ -422,7 +451,29 @@ export function createScenarioGenerator({
       return { issues: [...issues, ...e.issues] };
     }
     if (issues.length) return { issues };
-    const solved = await solvabilityIssues(blueprint, { maxNodes: solveMaxNodes });
+
+    let solved = await solvabilityIssues(blueprint, { maxNodes: solveMaxNodes });
+    // Deterministic repair of loop-1 win: if loop 1 can be won because the clue discovery took too few minutes
+    if (solved.result?.solvable && solved.result?.minLoops === 1) {
+      const winPlan = solved.result.plan?.[0] ?? [];
+      const discActionId = winPlan.find((actId) => {
+        const a = blueprint.actions.find((x) => x.id === actId);
+        return a?.effects?.some((e) => e.type === 'discover_clue');
+      });
+      if (discActionId) {
+        const discAction = blueprint.actions.find((x) => x.id === discActionId);
+        const originalCost = discAction.timeCost;
+        discAction.timeCost = Math.max(originalCost, params.loopMinutes - 3);
+        const recheck = await solvabilityIssues(blueprint, { maxNodes: solveMaxNodes });
+        if (recheck.result?.solvable && recheck.result?.minLoops >= 2) {
+          logger.info?.(`[scenario] repaired loop-1 win by increasing timeCost of "${discActionId}" from ${originalCost} to ${discAction.timeCost}`);
+          solved = recheck;
+        } else {
+          discAction.timeCost = originalCost;
+        }
+      }
+    }
+
     return solved.issues.length ? { issues: solved.issues } : { blueprint, minLoops: solved.result.minLoops };
   }
 
@@ -472,6 +523,12 @@ export function createScenarioGenerator({
           logger.warn?.(`[scenario] attempt ${attempt}/${attempts} rejected (${outcome.issues.length} issue(s)):\n${issueSummary}`);
           if (attempt < attempts) await sleep(Math.min(retryDelayMs * (2 ** (attempt - 1)), 5000));
         }
+
+        if (fallbackBlueprint) {
+          logger.warn?.('[scenario] all attempts failed; using fallback scenario blueprint');
+          return await scenarios.create(validateBlueprint({ ...fallbackBlueprint, slug: slugFor('fallback') }), { ownerSessionId: sessionId });
+        }
+
         throw new AppError(502, 'SCENARIO_GENERATION_FAILED', 'The AI could not produce a valid scenario. Please try again, or adjust your idea.');
       } finally {
         inFlight.delete(sessionId);

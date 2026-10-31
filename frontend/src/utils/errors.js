@@ -1,6 +1,7 @@
 const MESSAGES = {
   NETWORK_ERROR: "Can't reach the server. Check your connection and try again.",
   RATE_LIMITED: "You're going a little fast. Wait a moment and try again.",
+  DB_UNAVAILABLE: 'Database service is temporarily unavailable. Please try again shortly.',
   AI_NOT_CONFIGURED: "Scenario generation isn't set up on this server yet. Try one of the sample scenarios.",
   GENERATION_IN_PROGRESS: 'A scenario is already being generated. Please wait for it to finish.',
   SCENARIO_GENERATION_FAILED: "The AI couldn't build a playable scenario this time. Try again, or rephrase your idea.",

@@ -165,18 +165,29 @@ export function performAction(blueprint, session, request, { now }) {
   next.currentTime = nextClock; // events may have temporarily set the clock
 
   const outcome = evaluateOutcome(blueprint, next);
-  if (outcome) {
-    next.status = outcome.type === 'victory' ? 'completed' : 'failed';
+  if (outcome?.type === 'victory') {
+    next.status = 'completed';
     next.endingId = outcome.endingId;
     next.completedAt = now;
     logEntry(next, now, {
-      eventType: outcome.type === 'victory' ? 'game_won' : 'game_failed',
+      eventType: 'game_won',
       description: blueprint.endings.find((e) => e.id === outcome.endingId).title,
       refId: outcome.conditionId,
     });
   } else if (toOffset >= blueprint.loopLength) {
+    // Loop time has expired: the world snaps back, ready for resetLoop
     next.loopExpired = true;
     logEntry(next, now, { eventType: 'time_expired', description: `Time expired at ${next.currentTime}.` });
+  } else if (outcome?.type === 'failure') {
+    // Immediate mid-loop catastrophic failure caused by player action
+    next.status = 'failed';
+    next.endingId = outcome.endingId;
+    next.completedAt = now;
+    logEntry(next, now, {
+      eventType: 'game_failed',
+      description: blueprint.endings.find((e) => e.id === outcome.endingId).title,
+      refId: outcome.conditionId,
+    });
   }
   next.updatedAt = now;
 
